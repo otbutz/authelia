@@ -116,7 +116,12 @@ func handleOIDCAuthorizationConsentOrGenerate(ctx *middlewares.AutheliaCtx, root
 			return nil, true
 		}
 
-		ctx.Logger.Tracef("Authorization Request with id '%s' on client with id '%s' is checking potential pre-configured consent settion for subject %s with session id %s scopes %+v and audience %+v", requester.GetID(), requester.GetClient().GetID(), subject.String(), consent.ChallengeID.String(), consent.GrantedScopes, consent.GrantedAudience)
+		expires := int64(0)
+		if consent.ExpiresAt != nil {
+			expires = consent.ExpiresAt.Unix()
+		}
+
+		ctx.Logger.Tracef("Authorization Request with id '%s' on client with id '%s' is checking potential pre-configured consent settion for subject %s with session id %s which expires at %d with scopes %+v and audience %+v", requester.GetID(), requester.GetClient().GetID(), subject.String(), consent.ChallengeID.String(), expires, consent.GrantedScopes, consent.GrantedAudience)
 
 		if consent.HasExactGrants(scopes, audience) && consent.CanGrant() {
 			ctx.Logger.Tracef("Authorization Request with id '%s' on client with id '%s' matched pre-configured consent settion for subject %s with session id %s", requester.GetID(), requester.GetClient().GetID(), subject.String(), consent.ChallengeID.String())
