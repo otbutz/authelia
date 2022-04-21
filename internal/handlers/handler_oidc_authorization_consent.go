@@ -93,13 +93,21 @@ func handleOIDCAuthorizationConsentOrGenerate(ctx *middlewares.AutheliaCtx, root
 		err              error
 	)
 
+	scopes, audience = getExpectedScopesAndAudience(requester)
+
+	ctx.Logger.Tracef("Authorization Request with id '%s' on client with id '%s' is checking for pre-configured consent settions for subject %s with scopes %+v and audience %+v", requester.GetID(), requester.GetClient().GetID(), subject.String(), scopes, audience)
+
 	if rows, err = ctx.Providers.StorageProvider.LoadOAuth2ConsentSessionsPreConfigured(ctx, client.GetID(), subject); err != nil {
 		ctx.Logger.Errorf("Authorization Request with id '%s' on client with id '%s' had error looking up pre-configured consent sessions: %+v", requester.GetID(), requester.GetClient().GetID(), err)
 	}
 
+	i := 0
+
 	defer rows.Close()
 
 	for rows.Next() {
+		i++
+
 		if consent, err = rows.Get(); err != nil {
 			ctx.Logger.Errorf("Authorization Request with id '%s' on client with id '%s' had error looking up pre-configured consent sessions: %+v", requester.GetID(), requester.GetClient().GetID(), err)
 
@@ -108,16 +116,24 @@ func handleOIDCAuthorizationConsentOrGenerate(ctx *middlewares.AutheliaCtx, root
 			return nil, true
 		}
 
-		scopes, audience = getExpectedScopesAndAudience(requester)
+		ctx.Logger.Tracef("Authorization Request with id '%s' on client with id '%s' is checking potential pre-configured consent settion for subject %s with session id %s scopes %+v and audience %+v", requester.GetID(), requester.GetClient().GetID(), subject.String(), consent.ChallengeID.String(), consent.GrantedScopes, consent.GrantedAudience)
 
 		if consent.HasExactGrants(scopes, audience) && consent.CanGrant() {
+			ctx.Logger.Tracef("Authorization Request with id '%s' on client with id '%s' matched pre-configured consent settion for subject %s with session id %s", requester.GetID(), requester.GetClient().GetID(), subject.String(), consent.ChallengeID.String())
+
 			break
 		}
+
+		ctx.Logger.Tracef("Authorization Request with id '%s' on client with id '%s' did not match pre-configured consent settion for subject %s with session id %s", requester.GetID(), requester.GetClient().GetID(), subject.String(), consent.ChallengeID.String())
 	}
 
 	if consent != nil && consent.HasExactGrants(scopes, audience) && consent.CanGrant() {
+		ctx.Logger.Tracef("Authorization Request with id '%s' on client with id '%s' is finished checking (sucessfully) for pre-configured consent settions for subject %s with scopes %+v and audience %+v with %d rows checked", requester.GetID(), requester.GetClient().GetID(), subject.String(), scopes, audience, i)
+
 		return consent, false
 	}
+
+	ctx.Logger.Tracef("Authorization Request with id '%s' on client with id '%s' is finished checking (unsucessfully) for pre-configured consent settions for subject %s with scopes %+v and audience %+v with %d rows checked", requester.GetID(), requester.GetClient().GetID(), subject.String(), scopes, audience, i)
 
 	if consent, err = model.NewOAuth2ConsentSession(subject, requester); err != nil {
 		ctx.Logger.Errorf("Authorization Request with id '%s' on client with id '%s' could not be processed: error occurred generating consent: %+v", requester.GetID(), requester.GetClient().GetID(), err)
